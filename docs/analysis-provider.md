@@ -1,62 +1,60 @@
-# Phân tích yêu cầu — vai Provider
+# Phân tích yêu cầu — vai Consumer
 
-- Cặp đàm phán:
-- Product: A / B
-- Provider service:
-- Consumer service:
-- Người viết:
-- Ngày:
+- Cặp đàm phán: Pair 03 (Repo: B-pair03-core-access)
+- Product: Product B
+- Consumer service: Core Business (B6)
+- Provider service: Access Gate (B3)
+- Người viết: Nguyễn Trương Thuận
+- Ngày: 16/05/2026
 
 ---
 
-## 1. Resource chính
+## 1. Resource Consumer cần nhận/gửi
 
-| Resource | Mô tả | Thuộc tính bắt buộc | Thuộc tính tùy chọn |
+| Resource | Consumer dùng để làm gì? | Field bắt buộc với Consumer | Field có thể tùy chọn |
 |---|---|---|---|
-| `<Resource 1>` |  |  |  |
-| `<Resource 2>` |  |  |  |
+| `Gate` | Hiển thị trạng thái các cổng lên Dashboard giám sát của nhà trường. | `id`, `name`, `status` | `location` |
+| `AccessLog` | Tổng hợp dữ liệu để điểm danh sinh viên và tính công nhân viên. | `gateId`, `userId`, `timestamp`, `accessResult` | |
 
 ---
 
-## 2. Action/API dự kiến
+## 2. API Consumer cần gọi
 
-| Method | Path | Mục đích | Consumer gọi khi nào? |
+| Method | Path | Lúc nào gọi? | Kỳ vọng response |
 |---|---|---|---|
-| POST | `/...` |  |  |
-| GET | `/.../{id}` |  |  |
+| GET | `/v1/gates` | Khi admin mở trang Quản lý thiết bị Access Gate. | Trả về mảng JSON chứa thông tin các cổng hiện có. |
+| POST | `/v1/gates/{id}/open` | Khi bảo vệ trực ban ấn nút "Mở khẩn cấp" trên Core Dashboard. | Trả về 204 No Content hoặc 200 OK báo hiệu lệnh đã được gửi thành công. |
+| GET | `/v1/access-logs` | Khi hệ thống tự động chạy batch job đồng bộ điểm danh lúc nửa đêm. | Danh sách lịch sử phân trang. |
 
 ---
 
-## 3. Error case
+## 3. Error case Consumer cần xử lý
 
 Tối thiểu 5 case.
 
-| Status | Tình huống | Response body dự kiến |
+| Status | Consumer hiểu là gì? | Consumer sẽ xử lý thế nào? |
 |---:|---|---|
-| 400 | Payload sai định dạng | `Problem` |
-| 401 | Thiếu Bearer token | `Problem` |
-| 403 | Token hợp lệ nhưng không có quyền | `Problem` |
-| 404 | Resource không tồn tại | `Problem` |
-| 409 | Xung đột nghiệp vụ | `Problem` |
-| 422 | Dữ liệu đúng JSON nhưng vi phạm nghiệp vụ | `Problem` |
+| 400 | Tham số phân trang/lọc ngày bị sai | Báo lỗi nội bộ, dev Core cần sửa lại logic gọi API. |
+| 401 | Thiếu token hoặc token hết hạn | Tự động lấy lại token từ Identity Service và gọi lại (Retry). |
+| 403 | Admin thao tác không có quyền điều khiển cổng | Hiển thị thông báo "Bạn không có quyền thực hiện thao tác này" lên UI. |
+| 404 | Cổng không tồn tại (có thể đã bị gỡ bỏ) | Hiển thị trạng thái "Thiết bị không tồn tại" trên bảng điều khiển. |
+| 409 | Cổng đang mất kết nối, không thể mở | Cảnh báo UI: "Không thể kết nối đến cổng vật lý, vui lòng kiểm tra lại". |
+| 422 | Payload gửi lên bị vi phạm rule nghiệp vụ | Thông báo người dùng kiểm tra lại thông tin gửi đi. |
 
 ---
 
 ## 4. Giả định bổ sung
 
-Ghi rõ những điểm user story chưa nói nhưng Provider cần giả định.
-
-- Giả định 1:
-- Giả định 2:
-- Giả định 3:
+- Giả định 1: Định dạng thời gian (timestamp) mà Access Gate trả về sẽ thống nhất dùng chuẩn ISO 8601 (VD: `2026-05-12T08:00:00Z`).
+- Giả định 2: Các API được gọi nội bộ giữa 2 service (Server-to-Server) trong mạng LAN của Smart Campus.
 
 ---
 
-## 5. Câu hỏi cho Consumer
+## 5. Câu hỏi cho Provider
 
-1. 
-2. 
-3. 
+1. Mảng dữ liệu của `AccessLog` có hỗ trợ truyền query params để lọc theo `userId` (tra cứu nhanh một người) không?
+2. Nếu lệnh mở cổng được phát đi, làm sao Core biết được cửa đã *thực sự* mở thành công (vì có thể kẹt cơ học)? Có API nào để check trạng thái cửa đang đóng/mở realtime không?
+3. Định dạng `id` của các bạn dùng kiểu UUID hay Integer tự tăng? 
 
 ---
 
@@ -64,5 +62,5 @@ Ghi rõ những điểm user story chưa nói nhưng Provider cần giả địn
 
 | Rủi ro | Tác động | Đề xuất xử lý |
 |---|---|---|
-| Tên field không thống nhất | Consumer parse lỗi | Chốt naming trong `openapi.yaml` |
-| Payload lớn | Timeout/mock lỗi | Thống nhất content-type và size limit |
+| Provider đổi kiểu dữ liệu ID | Consumer bị lỗi runtime do parse nhầm | Chốt chặt định dạng kiểu String (UUID) ngay trong `openapi.yaml`. |
+| Provider thiếu mã lỗi cụ thể | Consumer khó xử lý logic hiển thị lỗi cho user | Chuẩn hóa chuẩn Problem Details `application/problem+json` như yêu cầu môn học. |
